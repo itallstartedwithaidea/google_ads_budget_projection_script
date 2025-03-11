@@ -1,0 +1,126 @@
+/**
+ * Google Ads Script: Automated Budget Projection and Performance Recommendations
+ * Features:
+ * - Date-based calculations: today, yesterday, MTD, days in month, etc.
+ * - Projected spend and performance metrics.
+ * - Email reporting with actionable spend adjustment recommendations.
+ * - Adjustments based on CVR (Conversion Rate).
+ */
+
+// Configuration
+const CONFIG = {
+    EMAIL_RECIPIENTS: ['team@company.com'],
+    SUBJECT: 'Google Ads Performance and Spend Recommendations',
+    ALERT_THRESHOLD: 0.1 // Allowance before sending recommendations
+};
+
+function main() {
+    const today = new Date();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysSpent = today.getDate();
+    const daysRemaining = daysInMonth - daysSpent;
+    const daysSpentPercentage = (daysSpent / daysInMonth) * 100;
+
+    const account = AdsApp.currentAccount();
+    const stats = account.getStatsFor("THIS_MONTH");
+
+    const spendMTD = stats.getCost();
+    const clicksMTD = stats.getClicks();
+    const impressionsMTD = stats.getImpressions();
+    const conversionsMTD = stats.getConversions();
+    const ctrMTD = clicksMTD / impressionsMTD;
+    const cvrMTD = conversionsMTD / clicksMTD;
+
+    const projectedSpend = (spendMTD / daysSpent) * daysInMonth;
+    const projectedClicks = (clicksMTD / daysSpent) * daysInMonth;
+    const projectedImpressions = (impressionsMTD / daysSpent) * daysInMonth;
+    const projectedConversions = (conversionsMTD / daysSpent) * daysInMonth;
+    const projectedCTR = projectedClicks / projectedImpressions;
+
+    // Recommendations based on spend increase
+    const adjustments = [5, 10, 15, 25, 50, 100].map(percentage => {
+        const increasedSpend = projectedSpend * (1 + percentage / 100);
+        const adjustedClicks = projectedClicks * (1 + percentage / 100);
+        const adjustedImpressions = projectedImpressions * (1 + percentage / 100);
+        const adjustedConversions = projectedConversions * (1 + percentage / 100 * cvrMTD);
+
+        return {
+            percentage: percentage,
+            spend: increasedSpend.toFixed(2),
+            clicks: Math.round(adjustedClicks),
+            impressions: Math.round(adjustedImpressions),
+            conversions: Math.round(adjustedConversions)
+        };
+    });
+
+    // Email report
+    sendEmailReport(
+        account.getName(),
+        spendMTD,
+        projectedSpend,
+        daysRemaining,
+        clicksMTD,
+        projectedClicks,
+        impressionsMTD,
+        projectedImpressions,
+        ctrMTD,
+        projectedCTR,
+        conversionsMTD,
+        projectedConversions,
+        adjustments
+    );
+}
+
+function sendEmailReport(accountName, spendMTD, projectedSpend, daysRemaining,
+    clicksMTD, projectedClicks, impressionsMTD, projectedImpressions,
+    ctrMTD, projectedCTR, conversionsMTD, projectedConversions, adjustments) {
+
+    let htmlReport = `
+        <h1>Google Ads Performance Report for ${accountName}</h1>
+        <p><strong>MTD Spend:</strong> ${spendMTD.toFixed(2)}</p>
+        <p><strong>Projected Spend:</strong> ${projectedSpend.toFixed(2)}</p>
+        <p><strong>Days Remaining:</strong> ${daysRemaining}</p>
+        <h2>Performance Metrics</h2>
+        <ul>
+            <li><strong>Clicks MTD:</strong> ${clicksMTD} | Projected: ${Math.round(projectedClicks)}</li>
+            <li><strong>Impressions MTD:</strong> ${impressionsMTD} | Projected: ${Math.round(projectedImpressions)}</li>
+            <li><strong>CTR MTD:</strong> ${(ctrMTD * 100).toFixed(2)}% | Projected: ${(projectedCTR * 100).toFixed(2)}%</li>
+            <li><strong>Conversions MTD:</strong> ${conversionsMTD} | Projected: ${Math.round(projectedConversions)}</li>
+        </ul>
+        <h2>Spend Adjustment Recommendations</h2>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Increase (%)</th>
+                    <th>Projected Spend</th>
+                    <th>Projected Clicks</th>
+                    <th>Projected Impressions</th>
+                    <th>Projected Conversions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    adjustments.forEach(adj => {
+        htmlReport += `
+            <tr>
+                <td>${adj.percentage}%</td>
+                <td>${adj.spend}</td>
+                <td>${adj.clicks}</td>
+                <td>${adj.impressions}</td>
+                <td>${adj.conversions}</td>
+            </tr>
+        `;
+    });
+
+    htmlReport += `
+            </tbody>
+        </table>
+    `;
+
+    MailApp.sendEmail({
+        to: CONFIG.EMAIL_RECIPIENTS.join(", "),
+        subject: CONFIG.SUBJECT,
+        htmlBody: htmlReport
+    });
+} 
